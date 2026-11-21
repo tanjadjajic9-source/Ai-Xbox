@@ -3,8 +3,6 @@ name: Build Xbox OT-FM MSIX Package
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -15,13 +13,22 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup NuGet
+      - name: Setup NuGet & MSBuild
         uses: nuget/setup-nuget@v2
+      - uses: microsoft/setup-msbuild@v2
 
-      - name: Setup MSBuild (Visual Studio 2022)
-        uses: microsoft/setup-msbuild@v2
+      - name: Automatically Organize Files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "xbox-uwp\src","xbox-uwp\Shaders","dist-xbox" | Out-Null
+          Get-ChildItem -File -Filter "*.sln" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -File -Filter "*.vcxproj*" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -File -Filter "*.manifest" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -File -Filter "packages.config" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -File -Include *.cpp,*.h | Move-Item -Destination "xbox-uwp\src\" -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -File -Filter "*.hlsl" | Move-Item -Destination "xbox-uwp\src\Shaders\" -Force -ErrorAction SilentlyContinue
 
-      - name: Generate Placeholder Store/Tile PNG Assets
+      - name: Generate Placeholder App Icons
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.Drawing
@@ -46,18 +53,18 @@ jobs:
             $bmp.Dispose()
           }
 
-      - name: Precompile FMCompute.hlsl GPU Training Shaders
+      - name: Precompile FMCompute GPU Shaders
         shell: pwsh
         run: |
           $sdkBin = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\10.0.*" -Directory | Sort-Object Name -Descending | Select-Object -First 1
           $fxc = Join-Path $sdkBin.FullName "x64\fxc.exe"
-          New-Item -ItemType Directory -Force -Path "xbox-uwp\Shaders" | Out-Null
           $entries = @("CSEncodeSineOperators", "CSConvForward", "CSAddResidual", "CSMSELossGrad", "CSConvBackwardInput", "CSSiLUBackward", "CSConvBackwardWeights", "CSAdamUpdate")
+          $hlsl = (Get-ChildItem -Recurse -Filter "FMCompute.hlsl" | Select-Object -First 1).FullName
           foreach ($entry in $entries) {
-            & $fxc /nologo /T cs_5_1 /E $entry /Fo "xbox-uwp\Shaders\$entry.cso" "xbox-uwp\src\Shaders\FMCompute.hlsl"
+            & $fxc /nologo /T cs_5_1 /E $entry /Fo "xbox-uwp\Shaders\$entry.cso" $hlsl
           }
 
-      - name: Create Self-Signed Test Certificate for Xbox Dev Mode
+      - name: Create Self-Signed Xbox Dev Certificate
         shell: pwsh
         run: |
           $cert = New-SelfSignedCertificate `
@@ -68,11 +75,10 @@ jobs:
             -CertStoreLocation "Cert:\CurrentUser\My" `
             -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
           $pwd = ConvertTo-SecureString -String "XboxOTFM2026!" -Force -AsPlainText
-          New-Item -ItemType Directory -Force -Path "dist-xbox" | Out-Null
           Export-PfxCertificate -Cert $cert -FilePath "xbox-uwp\XboxOTFM_Cert.pfx" -Password $pwd | Out-Null
           Export-Certificate -Cert $cert -FilePath "dist-xbox\XboxOTFM_Cert.cer" | Out-Null
 
-      - name: Restore DirectML & CppWinRT NuGet Packages
+      - name: Restore NuGet Packages
         run: nuget restore xbox-uwp\XboxOTFM.sln -PackagesDirectory xbox-uwp\packages
 
       - name: Build & Package Signed MSIX (Release|x64)
@@ -89,7 +95,7 @@ jobs:
             /p:OutDir=..\build-out\ `
             /m
 
-      - name: Locate & Sign MSIX + Collect Dependencies
+      - name: Sign MSIX & Collect DirectML
         shell: pwsh
         run: |
           $sdkBin = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\10.0.*" -Directory | Sort-Object Name -Descending | Select-Object -First 1
