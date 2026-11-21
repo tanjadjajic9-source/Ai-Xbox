@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-xbox-msix:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout Repository
@@ -79,15 +79,24 @@ jobs:
           Export-PfxCertificate -Cert $cert -FilePath "xbox-uwp\XboxOTFM_Cert.pfx" -Password $pwd | Out-Null
           Export-Certificate -Cert $cert -FilePath "dist-xbox\XboxOTFM_Cert.cer" | Out-Null
 
+      - name: Match Installed Windows SDK
+        shell: pwsh
+        run: |
+          $sdkVer = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\10.0.*" -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
+          Write-Host "Auto-detected Windows SDK version: $sdkVer"
+          (Get-Content "xbox-uwp\App.vcxproj") -replace '<WindowsTargetPlatformVersion>.*?</WindowsTargetPlatformVersion>', "<WindowsTargetPlatformVersion>$sdkVer</WindowsTargetPlatformVersion>" | Set-Content "xbox-uwp\App.vcxproj"
+
       - name: Restore NuGet Packages
         run: nuget restore xbox-uwp\XboxOTFM.sln -PackagesDirectory xbox-uwp\packages
 
       - name: Build & Package Signed MSIX (Release|x64)
         shell: pwsh
         run: |
+          $sdkVer = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\10.0.*" -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
           msbuild xbox-uwp\XboxOTFM.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
+            /p:WindowsTargetPlatformVersion=$sdkVer `
             /p:AppxBundle=Never `
             /p:UapAppxPackageBuildMode=StoreUpload `
             /p:AppxPackageExtension=.msix `
