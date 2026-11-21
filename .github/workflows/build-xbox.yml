@@ -60,6 +60,7 @@ jobs:
           $fxc = Join-Path $sdkBin.FullName "x64\fxc.exe"
           $entries = @("CSEncodeSineOperators", "CSConvForward", "CSAddResidual", "CSMSELossGrad", "CSConvBackwardInput", "CSSiLUBackward", "CSConvBackwardWeights", "CSAdamUpdate")
           $hlsl = (Get-ChildItem -Recurse -Filter "FMCompute.hlsl" | Select-Object -First 1).FullName
+          (Get-Content $hlsl) -replace 'RWStructuredBuffer<float>\s+gOutC\s*:', 'RWStructuredBuffer<float> gOutC_Buf :' -replace '\bgOutC\[', 'gOutC_Buf[' | Set-Content $hlsl
           foreach ($entry in $entries) {
             & $fxc /nologo /T cs_5_1 /E $entry /Fo "xbox-uwp\Shaders\$entry.cso" $hlsl
           }
