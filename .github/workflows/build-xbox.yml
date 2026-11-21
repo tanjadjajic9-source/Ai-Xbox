@@ -17,16 +17,33 @@ jobs:
         uses: nuget/setup-nuget@v2
       - uses: microsoft/setup-msbuild@v2
 
-      - name: Automatically Organize Files
+      - name: Deep Organize Files
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "xbox-uwp\src","xbox-uwp\Shaders","dist-xbox" | Out-Null
-          Get-ChildItem -File -Filter "*.sln" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
-          Get-ChildItem -File -Filter "*.vcxproj*" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
-          Get-ChildItem -File -Filter "*.manifest" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
-          Get-ChildItem -File -Filter "packages.config" | Move-Item -Destination "xbox-uwp\" -Force -ErrorAction SilentlyContinue
-          Get-ChildItem -File -Include *.cpp,*.h | Move-Item -Destination "xbox-uwp\src\" -Force -ErrorAction SilentlyContinue
-          Get-ChildItem -File -Filter "*.hlsl" | Move-Item -Destination "xbox-uwp\src\Shaders\" -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "xbox-uwp\src","xbox-uwp\src\Shaders","dist-xbox" | Out-Null
+
+          # Deep scan all folders to find every code file and put them in their exact spots
+          Get-ChildItem -Path . -Recurse -File | ForEach-Object {
+            $name = $_.Name
+            $ext = $_.Extension.ToLower()
+            $full = $_.FullName
+
+            if ($full -like "*\dist-xbox\*") { return }
+
+            if ($ext -eq ".sln" -or $name -like "*.vcxproj*" -or $ext -eq ".appxmanifest" -or $name -eq "packages.config") {
+              $dest = Join-Path (Get-Location) "xbox-uwp\$name"
+              if ($full -ne $dest) { Copy-Item $full -Destination $dest -Force }
+            } elseif ($ext -in ".cpp", ".h") {
+              $dest = Join-Path (Get-Location) "xbox-uwp\src\$name"
+              if ($full -ne $dest) { Copy-Item $full -Destination $dest -Force }
+            } elseif ($ext -eq ".hlsl") {
+              $dest = Join-Path (Get-Location) "xbox-uwp\src\Shaders\$name"
+              if ($full -ne $dest) { Copy-Item $full -Destination $dest -Force }
+            }
+          }
+
+          Write-Host "=== Files in xbox-uwp\src ==="
+          Get-ChildItem "xbox-uwp\src" | Select-Object -ExpandProperty Name
 
       - name: Generate Placeholder App Icons
         shell: pwsh
@@ -61,6 +78,7 @@ jobs:
           $entries = @("CSEncodeSineOperators", "CSConvForward", "CSAddResidual", "CSMSELossGrad", "CSConvBackwardInput", "CSSiLUBackward", "CSConvBackwardWeights", "CSAdamUpdate")
           $hlsl = (Get-ChildItem -Recurse -Filter "FMCompute.hlsl" | Select-Object -First 1).FullName
           (Get-Content $hlsl) -replace 'RWStructuredBuffer<float>\s+gOutC\s*:', 'RWStructuredBuffer<float> gOutC_Buf :' -replace '\bgOutC\[', 'gOutC_Buf[' | Set-Content $hlsl
+          New-Item -ItemType Directory -Force -Path "xbox-uwp\Shaders" | Out-Null
           foreach ($entry in $entries) {
             & $fxc /nologo /T cs_5_1 /E $entry /Fo "xbox-uwp\Shaders\$entry.cso" $hlsl
           }
