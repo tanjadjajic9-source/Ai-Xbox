@@ -41,11 +41,23 @@ jobs:
             }
           }
 
-          # Shield C++ code against Windows max/min macro conflicts
+          # 1. Put NOMINMAX at the very top of every file so Windows min/max never collides
           Get-ChildItem -Path "xbox-uwp\src" -Recurse -Include *.cpp,*.h | ForEach-Object {
-            (Get-Content $_.FullName) `
-              -replace '\bstd::max\b', '(std::max)' `
-              -replace '\bstd::min\b', '(std::min)' | Set-Content $_.FullName
+            $raw = Get-Content $_.FullName -Raw
+            if (-not ($raw.StartsWith("#ifndef NOMINMAX"))) {
+              $shield = "#ifndef NOMINMAX`r`n#define NOMINMAX`r`n#endif`r`n#ifndef WIN32_LEAN_AND_MEAN`r`n#define WIN32_LEAN_AND_MEAN`r`n#endif`r`n"
+              Set-Content $_.FullName -Value ($shield + $raw)
+            }
+          }
+
+          # 2. Add missing Storage header to FMBrain.cpp for InstalledLocation
+          $fmBrain = (Get-ChildItem -Path "xbox-uwp\src" -Recurse -Filter "FMBrain.cpp" | Select-Object -First 1).FullName
+          if ($fmBrain) {
+            $c = Get-Content $fmBrain -Raw
+            if (-not ($c -like "*<winrt/Windows.Storage.h>*")) {
+              $c = $c -replace '#include "FMBrain.h"', "#include `"FMBrain.h`"`r`n#include <winrt/Windows.Storage.h>"
+              Set-Content $fmBrain -Value $c
+            }
           }
 
           Write-Host "=== Files in xbox-uwp\src ==="
