@@ -22,7 +22,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "xbox-uwp\src","xbox-uwp\src\Shaders","dist-xbox" | Out-Null
 
-          # Deep scan all folders to find every code file and put them in their exact spots
           Get-ChildItem -Path . -Recurse -File | ForEach-Object {
             $name = $_.Name
             $ext = $_.Extension.ToLower()
@@ -97,12 +96,14 @@ jobs:
           Export-PfxCertificate -Cert $cert -FilePath "xbox-uwp\XboxOTFM_Cert.pfx" -Password $pwd | Out-Null
           Export-Certificate -Cert $cert -FilePath "dist-xbox\XboxOTFM_Cert.cer" | Out-Null
 
-      - name: Match Installed Windows SDK
+      - name: Match SDK and Turn Off PCH Requirement
         shell: pwsh
         run: |
           $sdkVer = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\10.0.*" -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
           Write-Host "Auto-detected Windows SDK version: $sdkVer"
-          (Get-Content "xbox-uwp\App.vcxproj") -replace '<WindowsTargetPlatformVersion>.*?</WindowsTargetPlatformVersion>', "<WindowsTargetPlatformVersion>$sdkVer</WindowsTargetPlatformVersion>" | Set-Content "xbox-uwp\App.vcxproj"
+          (Get-Content "xbox-uwp\App.vcxproj") `
+            -replace '<WindowsTargetPlatformVersion>.*?</WindowsTargetPlatformVersion>', "<WindowsTargetPlatformVersion>$sdkVer</WindowsTargetPlatformVersion>" `
+            -replace '<LanguageStandard>stdcpp20</LanguageStandard>', '<LanguageStandard>stdcpp20</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader>' | Set-Content "xbox-uwp\App.vcxproj"
 
       - name: Restore NuGet Packages
         run: nuget restore xbox-uwp\XboxOTFM.sln -PackagesDirectory xbox-uwp\packages
