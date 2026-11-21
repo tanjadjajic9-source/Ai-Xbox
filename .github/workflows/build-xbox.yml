@@ -41,6 +41,13 @@ jobs:
             }
           }
 
+          # Shield C++ code against Windows max/min macro conflicts
+          Get-ChildItem -Path "xbox-uwp\src" -Recurse -Include *.cpp,*.h | ForEach-Object {
+            (Get-Content $_.FullName) `
+              -replace '\bstd::max\b', '(std::max)' `
+              -replace '\bstd::min\b', '(std::min)' | Set-Content $_.FullName
+          }
+
           Write-Host "=== Files in xbox-uwp\src ==="
           Get-ChildItem "xbox-uwp\src" | Select-Object -ExpandProperty Name
 
